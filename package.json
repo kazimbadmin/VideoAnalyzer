@@ -1,0 +1,23 @@
+{
+  "name": "video-analyzer",
+  "version": "1.0.0",
+  "description": "Deep learning-based video analysis.",
+  "repository": "",
+  "author": "Mohd Irfan",
+  "email": "irfan.ali1922@gmail.com",
+  "scripts": {
+    "test": "exit 0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity": "^3.32.0",
+    "@aws-sdk/client-rekognition": "^3.32.0",
+    "@aws-sdk/credential-provider-cognito-identity": "^3.32.0",
+    "@google-cloud/video-intelligence": "^4.2.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "ts-node": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^14.0.23",
+    "typescript": "^4.0.2"
+  }
+}
