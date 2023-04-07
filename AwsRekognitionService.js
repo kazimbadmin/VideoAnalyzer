@@ -2,7 +2,7 @@ const { RekognitionClient } = require("@aws-sdk/client-rekognition");
 const { StartFaceDetectionCommand, GetFaceDetectionCommand } = require("@aws-sdk/client-rekognition");
 const ffmpeg = require('fluent-ffmpeg');
 const fs = require('fs');
-const { inPlaceSort } =  require('fast-sort');
+const { inPlaceSort } = require('fast-sort');
 const BUCKET = "YOUR-AWS-BUCKET-NAME";
 const REGION = "YOUR-AWS-RESOURCES-REGION";
 
@@ -36,22 +36,21 @@ const main = async (dirPath, videoName) => {
       }
       var facesArray = [];
       var i;
-      for (face of results.Faces) {
-        facesArray.push(csvRow);
+      for (i = 0; i < results.Faces.length; i++) {
         const face = results.Faces[i].Face;
         const timestamp = milisecondsToTimeStamp(results.Faces[i].Timestamp);
         let attributes = {
           "timestamp": timestamp,
-          "face-confidence": face.Confidence,
-          "eyes_open_confidence": face.EyesOpen.Confidence,
-          "smiling_confidence": face.Smile.Confidence
+          "face_confidence": face.Confidence,
+          "eyes_open_confidence": face.EyesOpen.Value === true ? face.EyesOpen.Confidence : 0,
+          "smiling_confidence": face.Smile.Value === true ? face.Smile.Confidence : 0
         }
         facesArray.push(attributes);
       }
 
       inPlaceSort(facesArray).by([
-        { desc: attributes => attributes.eyes_visible_confidence },
-        { desc: attributes => attributes.looking_at_camera_confidence },
+        { desc: attributes => attributes.face_confidence },
+        { desc: attributes => attributes.eyes_open_confidence },
         { desc: attributes => attributes.smiling_confidence }
       ]);
 
@@ -64,6 +63,7 @@ const main = async (dirPath, videoName) => {
           break;
         }
       }
+
       // Store result into CSV and generate thumbnails
       generateThumbnails(timestampArray, videoName, dirPath)
       storeAttributes(facesArray, dirPath + 'face-data.csv');
