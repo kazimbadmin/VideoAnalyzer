@@ -3,7 +3,7 @@
 This application is a demostration of using AI to create cover pics from videos in a creator platform and shows you how to use Amazon Rekognition service and Google’s Video Intelligence API. The services used in this example are: 
 - Amazon Rekognition Service
 - Google’s Video Intelligence API
-- Amazon Cognito
+- fast-sort
 - fluent-ffmpeg
 
 ## Build
