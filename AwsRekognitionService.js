@@ -1,22 +1,13 @@
-const { CognitoIdentityClient } = require("@aws-sdk/client-cognito-identity");
-const { fromCognitoIdentityPool } = require("@aws-sdk/credential-provider-cognito-identity");
 const { RekognitionClient } = require("@aws-sdk/client-rekognition");
 const { StartFaceDetectionCommand, GetFaceDetectionCommand } = require("@aws-sdk/client-rekognition");
 const ffmpeg = require('fluent-ffmpeg');
 const fs = require('fs');
-const BUCKET = "YOUR-AWS-BUCKET-NAME";
-const REGION = "YOUR-AWS-RESOURCES-REGION";
-const IDENTITY_POOL_ID = "YOUR-IDENTITY-POOL-ID";
-
+const { inPlaceSort } =  require('fast-sort');
+const BUCKET = "aws-video-analyser";
+const REGION = "us-east-1";
 
 const main = async (dirPath, videoName) => {
-  const rekognitionClient = new RekognitionClient({
-    region: REGION,
-    credentials: fromCognitoIdentityPool({
-      client: new CognitoIdentityClient({ region: REGION }), identityPoolId: IDENTITY_POOL_ID,
-    }),
-  });
-
+  const rekognitionClient = new RekognitionClient({ region: REGION });
   try {
     const startDetectParams = {
       Video: {
@@ -44,38 +35,38 @@ const main = async (dirPath, videoName) => {
         }
       }
       var facesArray = [];
-      var timetampArray = [];
-      var filteredTimetampArray = [];
       var i;
-      for (i = 0; i < results.Faces.length; i++) {
-        const csvRow = JSON.stringify(results.Faces[i]);
+      for (face of results.Faces) {
         facesArray.push(csvRow);
         const face = results.Faces[i].Face;
         const timestamp = milisecondsToTimeStamp(results.Faces[i].Timestamp);
-        if (face.Confidence >= 50 && face.EyesOpen.Value === true && face.EyesOpen.Confidence >= 50 && face.Smile.Value === true && face.Smile.Confidence >= 50 && !checkVal(filteredTimetampArray, timestamp)) {
-          filteredTimetampArray.push(timestamp)
+        let attributes = {
+          "timestamp": timestamp,
+          "face-confidence": face.Confidence,
+          "eyes_open_confidence": face.EyesOpen.Confidence,
+          "smiling_confidence": face.Smile.Confidence
         }
-        if (filteredTimetampArray.length>=3){
+        facesArray.push(attributes);
+      }
+
+      inPlaceSort(facesArray).by([
+        { desc: attributes => attributes.eyes_visible_confidence },
+        { desc: attributes => attributes.looking_at_camera_confidence },
+        { desc: attributes => attributes.smiling_confidence }
+      ]);
+
+      var timestampArray = [];
+      for (item of facesArray) {
+        if (!checkVal(timestampArray, item.timestamp)) {
+          timestampArray.push(item.timestamp);
+        }
+        if (timestampArray.length >= 3) {
           break;
         }
-        timetampArray.push(timestamp)
       }
-      timetampArray.sort();
-      if (filteredTimetampArray.length < 3) {
-        for (let index = timetampArray.length - 1; index >= 0; index--) {
-          const item = timetampArray[index];
-          if (filteredTimetampArray.length >= 3) {
-            break;
-          }
-          if(!checkVal(filteredTimetampArray, item)){
-            filteredTimetampArray.push(item);
-          }
-        }
-      }
-      filteredTimetampArray.sort();
       // Store result into CSV and generate thumbnails
-      generateThumbnails(filteredTimetampArray, videoName, dirPath)
-      storeApiResponse(facesArray, dirPath + 'face-data.csv');
+      generateThumbnails(timestampArray, videoName, dirPath)
+      storeAttributes(facesArray, dirPath + 'face-data.csv');
     } catch (err) {
       console.log("Error", err);
     }
@@ -86,10 +77,10 @@ const main = async (dirPath, videoName) => {
 
 
 // Helper function to create the CSV file.
-function storeApiResponse(facesArray, path) {
+function storeAttributes(facesArray, path) {
   let csvContent = '';
   facesArray.forEach(function (row) {
-    csvContent += row + "\r\n";
+    csvContent += JSON.stringify(row) + "\r\n";
   });
   fs.writeFile(path, csvContent, 'utf8', function (err) {
     if (err) {
@@ -106,10 +97,10 @@ const generateThumbnails = async (timestampArray, videoName, dir) => {
   console.log("s3ObjectUrl", s3ObjectUrl, dir, timestampArray);
   ffmpeg(s3ObjectUrl)
     .screenshots({
-      timemarks: timestampArray, // number of seconds
-      folder: dir
+      timemarks: timestampArray,
+      folder: dir,
+      filename: 'thumbnail-at-%s-seconds.png',
     }).on('end', function () {
-      // readDirectory(dir)
     });
 }
 
@@ -117,16 +108,10 @@ const checkVal = (arr, val) => {
   return arr.includes(val)
 };
 
-// Helper funtion to convert miliseconds into "HH:MM:SS format" 
+// Helper funtion to convert miliseconds into seconds
 const milisecondsToTimeStamp = milliseconds => {
-  const seconds = Math.floor((milliseconds / 1000) % 60);
-  const minutes = Math.floor((milliseconds / 1000 / 60) % 60);
-  const hours = Math.floor((milliseconds / 1000 / 60 / 60) % 24);
-  return [
-    hours.toString().padStart(2, "0"),
-    minutes.toString().padStart(2, "0"),
-    seconds.toString().padStart(2, "0")
-  ].join(":");
+  const seconds = milliseconds / 1000;
+  return seconds;
 }
 
 main("LOCAL-DIR-PATH-TO_STORE-RESULTS", "S3-OBJECT-NAME");

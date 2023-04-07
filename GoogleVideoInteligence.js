@@ -1,6 +1,7 @@
 const Video = require('@google-cloud/video-intelligence').v1;
 const ffmpeg = require('fluent-ffmpeg');
 const fs = require('fs');
+const { inPlaceSort } =  require('fast-sort');
 
 async function main(gcsUri, dirPath, videoPath) {
   // Starting face detection 
@@ -23,62 +24,57 @@ async function main(gcsUri, dirPath, videoPath) {
   console.log('Waiting for operation to complete...');
   const faceAnnotations = results[0].annotationResults[0].faceDetectionAnnotations;
   var facesArray = [];
-  var timestampArray = [];
-  var filteredTimetampArray = [];
-  const csvRow = JSON.stringify(faceAnnotations);
-  facesArray.push(csvRow);
-
   for (const { tracks } of faceAnnotations) {
-    for (const { segment, timestampedObjects, confidence } of tracks) {
-      const startTime = segment.startTimeOffset.seconds.toNumber();
+    for (const { segment, timestampedObjects } of tracks) {
       const [firstTimestapedObject] = timestampedObjects;
-      var isLookingAtCamera = false;
-      var isSmiling = false;
-      var isEyesVisible = false;
+      let attributes = {
+        "startTime": parseFloat(`${segment.startTimeOffset.seconds}.` + `${(segment.startTimeOffset.nanos / 1e6).toFixed(0)}`),
+        "endTime": parseFloat(`${segment.endTimeOffset.seconds}.` + `${(segment.endTimeOffset.nanos / 1e6).toFixed(0)}`),
+        "eyes_visible_confidence": 0,
+        "looking_at_camera_confidence": 0,
+        "smiling_confidence": 0
+      }
       for (const { name, confidence } of firstTimestapedObject.attributes) {
-        if (confidence >= 0.50) {
-          if (name === 'eyes_visible') {
-            isEyesVisible = true;
-          }
-          if (name === 'looking_at_camera') {
-            isLookingAtCamera = true;
-          }
-          if (name === 'smiling') {
-            isSmiling = true;
-          }
+        if (name === 'eyes_visible') {
+          attributes.eyes_visible_confidence = confidence;
+        }
+        else if (name === 'looking_at_camera') {
+          attributes.looking_at_camera_confidence = confidence;
+        }
+        else if (name === 'smiling') {
+          attributes.smiling_confidence = confidence;
         }
       }
-      if (isLookingAtCamera && !checkVal(filteredTimetampArray, startTime) && filteredTimetampArray.length <3 
-      || isSmiling && isEyesVisible && !checkVal(filteredTimetampArray, startTime) && filteredTimetampArray.length <3) {
-        filteredTimetampArray.push(startTime);
-      }
-      timestampArray.push(startTime)
+      facesArray.push(attributes);
     }
   }
-  timestampArray.sort();
-  if (filteredTimetampArray.length < 3) {
-    for (let index = timestampArray.length - 1; index >= 0; index--) {
-      const item = timestampArray[index];
-      if (filteredTimetampArray.length >=3) {
-        break;
-      }
-      if(!checkVal(filteredTimetampArray, item)){
-        filteredTimetampArray.push(item);
-      }
+  
+  inPlaceSort(facesArray).by([
+    { desc: attributes => attributes.eyes_visible_confidence },
+    { desc: attributes => attributes.looking_at_camera_confidence },
+    { desc: attributes => attributes.smiling_confidence }
+  ]);
+
+  var timestampArray = [];
+  for (item of facesArray) {
+    const avg = (item.endTime + item.startTime)/2;
+    if (!checkVal(timestampArray, avg)) {
+        timestampArray.push(avg);
+    }
+    if (timestampArray.length >=3) {
+      break;
     }
   }
-  filteredTimetampArray.sort();
   // Store result into CSV and generate thumbnails
-  generateThumbnails(filteredTimetampArray, dirPath, videoPath)
-  storeApiResponse(facesArray, dirPath + 'response.csv');
+  generateThumbnails(timestampArray, dirPath, videoPath)
+  storeAttributes(facesArray, dirPath + 'response.csv');
 }
 
-
 // Helper function to create the CSV file.
-function storeApiResponse(facesArray, path) {
+function storeAttributes(facesArray, path) {
   let csvContent = '';
   facesArray.forEach(function (row) {
-    csvContent += row + "\r\n";
+    csvContent += JSON.stringify(row) + "\r\n";
   });
   fs.writeFile(path, csvContent, 'utf8', function (err) {
     if (err) {
@@ -95,9 +91,9 @@ const generateThumbnails = async (arr, dir, videoPath) => {
   ffmpeg(videoPath)
     .screenshots({
       timemarks: arr,
-      folder: dir
+      folder: dir,
+      filename: 'thumbnail-at-%s-seconds.png',
     }).on('end', function () {
-      // readDirectory(dir)
     });
 }
 
@@ -106,3 +102,5 @@ const checkVal = (arr, val) => {
 };
 
 main("GS-OBJECT", "LOCAL-DIR-PATH-TO_STORE-RESULTS", "GS-OBJECT-PUBLIC-URL");
+
+
