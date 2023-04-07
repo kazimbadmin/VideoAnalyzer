@@ -3,8 +3,8 @@ const { StartFaceDetectionCommand, GetFaceDetectionCommand } = require("@aws-sdk
 const ffmpeg = require('fluent-ffmpeg');
 const fs = require('fs');
 const { inPlaceSort } =  require('fast-sort');
-const BUCKET = "aws-video-analyser";
-const REGION = "us-east-1";
+const BUCKET = "YOUR-AWS-BUCKET-NAME";
+const REGION = "YOUR-AWS-RESOURCES-REGION";
 
 const main = async (dirPath, videoName) => {
   const rekognitionClient = new RekognitionClient({ region: REGION });
