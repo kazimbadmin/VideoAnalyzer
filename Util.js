@@ -10,44 +10,23 @@ const ASP_1X1 = "1X1";
 
 // Helper function to generate Thumbnail using ffmpeg
 const startFrameGrabbing = async (facesArray, dir, fileUrl) => {
-  // let timestampArray = [];
-  let i = 1;
+  let timestampArray = [];
   for (item of facesArray) {
-    // timestampArray.push(item.timestamp);
-    const fileName = "rank-" + i + "-";
-    await generateOriginalThumb(fileUrl, dir, item.timestamp, `${fileName}%s${EXTENSION}`)
-    const filePath = `${dir}${fileName}${item.timestamp}`;
-    cropImage(`${filePath}${EXTENSION}`, `${filePath}${ASP_16X9}${EXTENSION}`, ASP_16X9, item.boundingBox);
-    cropImage(`${filePath}${EXTENSION}`, `${filePath}${ASP_5X7}${EXTENSION}`,  ASP_5X7, item.boundingBox);
-    cropImage(`${filePath}${EXTENSION}`, `${filePath}${ASP_1X1}${EXTENSION}`, ASP_1X1, item.boundingBox)
-    i++;
+    timestampArray.push(item.timestamp);
   }
-  // ffmpeg(s3ObjectUrl)
-  //   .screenshots({
-  //     timemarks: timestampArray,
-  //     folder: dir,
-  //     filename: '%s.png',
-  //   }).on('end', function () {
-  //     for (obj of facesArray) {
-  //       const filePath = `${dir}${obj.timestamp}.png`;
-  //       SmartCrop.cropImage(filePath, `${dir}${obj.timestamp}-16X9.png`, "16X9", obj.boundingBox);
-  //       SmartCrop.cropImage(filePath, `${dir}${obj.timestamp}-5X7.png`, "5X7", obj.boundingBox);
-  //       SmartCrop.cropImage(filePath, `${dir}${obj.timestamp}-1X1.png`, "1X1", obj.boundingBox)
-  //     }
-  //   });
-}
-
-const generateOriginalThumb = (url, dir, timestamp, fileName) => {
-  return new Promise((resolve, reject) => {
-    ffmpeg(url)
-      .screenshots({
-        timemarks: [timestamp],
-        folder: dir,
-        filename: fileName,
-      }).on('end', function () {
-        return resolve()
-      });
-  })
+  ffmpeg(fileUrl)
+    .screenshots({
+      timemarks: timestampArray,
+      folder: dir,
+      filename: '%s.png',
+    }).on('end', function () {
+      for (obj of facesArray) {
+        const filePath = `${dir}${item.timestamp}`;
+        cropImage(`${filePath}${EXTENSION}`, `${filePath}${ASP_16X9}${EXTENSION}`, ASP_16X9, item.boundingBox);
+        cropImage(`${filePath}${EXTENSION}`, `${filePath}${ASP_5X7}${EXTENSION}`, ASP_5X7, item.boundingBox);
+        cropImage(`${filePath}${EXTENSION}`, `${filePath}${ASP_1X1}${EXTENSION}`, ASP_1X1, item.boundingBox)
+      }
+    });
 }
 
 const cropImage = async (originialFilePath, newFilePath, cropRatio, boundingBox = null) => {
@@ -178,4 +157,4 @@ function storeResponseIntoCsv(facesArray, path) {
   });
 }
 
-module.exports = {cropImage, startFrameGrabbing, storeResponseIntoCsv }
+module.exports = { cropImage, startFrameGrabbing, storeResponseIntoCsv }
