@@ -1,7 +1,6 @@
 const Video = require('@google-cloud/video-intelligence').v1;
-const ffmpeg = require('fluent-ffmpeg');
-const fs = require('fs');
 const { inPlaceSort } =  require('fast-sort');
+const SmartCrop = require("./Util");
 
 async function main(gcsUri, dirPath, videoPath) {
   // Starting face detection 
@@ -27,80 +26,25 @@ async function main(gcsUri, dirPath, videoPath) {
   for (const { tracks } of faceAnnotations) {
     for (const { segment, timestampedObjects } of tracks) {
       const [firstTimestapedObject] = timestampedObjects;
+      const startTime = parseFloat(`${segment.startTimeOffset.seconds}.` + `${(segment.startTimeOffset.nanos / 1e6).toFixed(0)}`);
+      const endTime = parseFloat(`${segment.endTimeOffset.seconds}.` + `${(segment.endTimeOffset.nanos / 1e6).toFixed(0)}`);
       let attributes = {
         "startTime": parseFloat(`${segment.startTimeOffset.seconds}.` + `${(segment.startTimeOffset.nanos / 1e6).toFixed(0)}`),
         "endTime": parseFloat(`${segment.endTimeOffset.seconds}.` + `${(segment.endTimeOffset.nanos / 1e6).toFixed(0)}`),
-        "eyes_visible_confidence": 0,
-        "looking_at_camera_confidence": 0,
-        "smiling_confidence": 0
-      }
+        "confidenceScore": 0,
+        "timestamp" : (startTime + endTime)/2
+      }      
       for (const { name, confidence } of firstTimestapedObject.attributes) {
-        if (name === 'eyes_visible') {
-          attributes.eyes_visible_confidence = confidence;
-        }
-        else if (name === 'looking_at_camera') {
-          attributes.looking_at_camera_confidence = confidence;
-        }
-        else if (name === 'smiling') {
-          attributes.smiling_confidence = confidence;
+        if (name === 'eyes_visible' || name === 'looking_at_camera' || name === 'smiling') {
+          attributes.confidenceScore = attributes.confidenceScore+ confidence;
         }
       }
       facesArray.push(attributes);
     }
   }
-  
-  inPlaceSort(facesArray).by([
-    { desc: attributes => attributes.eyes_visible_confidence },
-    { desc: attributes => attributes.looking_at_camera_confidence },
-    { desc: attributes => attributes.smiling_confidence }
-  ]);
-
-  var timestampArray = [];
-  for (item of facesArray) {
-    const avg = (item.endTime + item.startTime)/2;
-    if (!checkVal(timestampArray, avg)) {
-        timestampArray.push(avg);
-    }
-    if (timestampArray.length >=3) {
-      break;
-    }
-  }
-  // Store result into CSV and generate thumbnails
-  generateThumbnails(timestampArray, dirPath, videoPath)
-  storeAttributes(facesArray, dirPath + 'response.csv');
+  inPlaceSort(facesArray).desc(attributes => attributes.confidenceScore);
+  SmartCrop.startFrameGrabbing(facesArray.length > 3 ? facesArray.slice(0, 3) : facesArray, dirPath, videoPath)
+  SmartCrop.storeResponseIntoCsv(facesArray, dirPath + 'face-data.csv');
 }
-
-// Helper function to create the CSV file.
-function storeAttributes(facesArray, path) {
-  let csvContent = '';
-  facesArray.forEach(function (row) {
-    csvContent += JSON.stringify(row) + "\r\n";
-  });
-  fs.writeFile(path, csvContent, 'utf8', function (err) {
-    if (err) {
-      console.log('Some error occured - file either not saved or corrupted file saved.');
-    } else {
-      console.log('It\'s saved!');
-    }
-  });
-}
-
-// Helper function to generate Thumbnail using ffmpeg
-const generateThumbnails = async (arr, dir, videoPath) => {
-  console.log(dir, arr);
-  ffmpeg(videoPath)
-    .screenshots({
-      timemarks: arr,
-      folder: dir,
-      filename: 'thumbnail-at-%s-seconds.png',
-    }).on('end', function () {
-    });
-}
-
-const checkVal = (arr, val) => {
-  return arr.includes(val)
-};
 
 main("GS-OBJECT", "LOCAL-DIR-PATH-TO_STORE-RESULTS", "GS-OBJECT-PUBLIC-URL");
-
-
